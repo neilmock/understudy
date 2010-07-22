@@ -5,6 +5,8 @@ Understudy is a framework for distributed computing in Python.  It allows
 you to write Python code and transparently execute it on any number of
 listening nodes.
 
+It currently requires the 2.0 version of Redis with pub/sub support.
+
 Overview
 --------
 
