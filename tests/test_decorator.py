@@ -14,6 +14,11 @@ class Job(object):
     def add(self, num1, num2):
         return num1 + num2
 
+class BlockingJob(object):
+    @understudy("test", block=True, db=9)
+    def add(self, num1, num2):
+        return num1 + num2
+
 class JobWithRequirements(object):
     @understudy("test", db=9, packages=['boto>=1.9b'])
     def do_import(self):
@@ -31,6 +36,17 @@ class TestDecorator(unittest.TestCase):
 
     def tearDown(self):
         self.p.terminate()
+
+    def test_blocking(self):
+        while True:
+            try:
+                job = BlockingJob()
+                result = job.add(1,1)
+                break
+            except NoUnderstudiesError:
+                pass
+
+        self.assertEquals(int(result), 2)
 
     def test_without_requirements(self):
         while True:
