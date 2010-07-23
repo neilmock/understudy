@@ -8,6 +8,13 @@ from redis import Redis
 from understudy.exceptions import NoUnderstudiesError
 
 
+def _exec(cmd):
+    return subprocess.Popen(cmd, shell=True,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            close_fds=True).communicate()[0]
+
 class Result(object):
     def __init__(self, uuid, redis):
         self.uuid = uuid
@@ -38,21 +45,14 @@ class Understudy(object):
         directory_name = tempfile.mkdtemp()
         cmd = "virtualenv %s --no-site-packages" % directory_name
 
-        subprocess.Popen(cmd, shell=True,
-                         stdin=subprocess.PIPE,
-                         stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE,
-                         close_fds=True).communicate()[0]
+        _exec(cmd)
 
         if packages:
             packages = ["\"%s\"" % package for package in packages]
-            cmd = "source %s/bin/activate && pip install %s" % (directory_name,
-                                                                " ".join(packages))
-            subprocess.Popen(cmd, shell=True,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             close_fds=True).communicate()[0]
+            cmd = "source %s/bin/activate && pip install %s" % \
+                (directory_name, " ".join(packages))
+
+            _exec(cmd)
 
         activation_file = "%s/bin/activate_this.py" % directory_name
         execfile(activation_file, dict(__file__=activation_file))
@@ -63,11 +63,7 @@ class Understudy(object):
         shutil.rmtree(directory)
 
     def shell(self, command):
-        return subprocess.Popen(command, shell=True,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                close_fds=True).communicate()[0]
+        return _exec(command)
 
 
     def perform(self, serialized):
