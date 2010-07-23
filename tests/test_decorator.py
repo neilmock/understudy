@@ -4,23 +4,25 @@ from understudy import Understudy, Result
 from understudy.exceptions import NoUnderstudiesError
 from understudy.decorators import understudy
 
+from helper import TEST_DB
+
 
 def start_understudy(channel):
-    understudy = Understudy(channel, db=9)
+    understudy = Understudy(channel, db=TEST_DB)
     understudy.start()
 
 class Job(object):
-    @understudy("test", db=9)
+    @understudy("test", db=TEST_DB)
     def add(self, num1, num2):
         return num1 + num2
 
 class BlockingJob(object):
-    @understudy("test", block=True, db=9)
+    @understudy("test", block=True, db=TEST_DB)
     def add(self, num1, num2):
         return num1 + num2
 
 class JobWithRequirements(object):
-    @understudy("test", db=9, packages=['boto>=1.9b'])
+    @understudy("test", db=TEST_DB, packages=['boto>=1.9b'])
     def do_import(self):
         try:
             import boto

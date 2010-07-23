@@ -6,16 +6,18 @@ from redis import Redis
 from understudy import Lead, Understudy, Result
 from understudy.exceptions import NoUnderstudiesError
 
+from helper import TEST_DB
+
 
 UUID = r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
 
 def start_understudy(channel):
-    understudy = Understudy(channel, db=9)
+    understudy = Understudy(channel, db=TEST_DB)
     understudy.start()
 
 class TestLead(unittest.TestCase):
     def setUp(self):
-        self.lead = Lead("test", db=9)
+        self.lead = Lead("test", db=TEST_DB)
 
         # fork the understudy
         self.p = Process(target=start_understudy, args=("test",))
