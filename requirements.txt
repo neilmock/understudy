@@ -1,2 +1,3 @@
 simplejson
 redis==2.0.0
+virtualenv
