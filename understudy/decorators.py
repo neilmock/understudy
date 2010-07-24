@@ -1,4 +1,5 @@
-import pickle
+import inspect
+import simplejson
 from understudy import Lead
 
 
@@ -24,7 +25,11 @@ def understudy(*uargs, **ukwargs):
 
             packages = ukwargs.get('packages', [])
 
-            action = {'cls':pickle.dumps(cls),
+            sourcefile = inspect.getsourcefile(cls.__class__)
+            f = open(sourcefile, 'rb'); source = f.read(); f.close()
+
+            action = {'source':simplejson.dumps(source),
+                      'cls':cls.__class__.__name__,
                       'func':func.__name__,
                       'args':args,
                       'kwargs':kwargs,

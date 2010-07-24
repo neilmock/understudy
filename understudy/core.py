@@ -1,7 +1,7 @@
+import imp
 import logging
 import subprocess
 import simplejson
-import pickle
 import tempfile
 import shutil
 from uuid import uuid4
@@ -17,14 +17,14 @@ def _exec(cmd):
                             close_fds=True).communicate()[0]
 
 class UnderstudyHandler(logging.Handler):
-  def __init__(self, uuid, redis):
-    logging.Handler.__init__(self)
-    self.uuid = uuid
-    self.redis = redis
+    def __init__(self, uuid, redis):
+        logging.Handler.__init__(self)
+        self.uuid = uuid
+        self.redis = redis
 
-  def emit(self, record):
-      self.redis.publish(self.uuid, self.format(record))
-      self.redis.lpush("log:%s" % self.uuid, self.format(record))
+    def emit(self, record):
+        self.redis.publish(self.uuid, self.format(record))
+        self.redis.lpush("log:%s" % self.uuid, self.format(record))
 
 class Result(object):
     def __init__(self, uuid, redis):
@@ -97,10 +97,20 @@ class FunctionHandler(object):
         self.virtualenv = None
 
     def perform(self):
+        source = simplejson.loads(self.serialized['source'])
+        filepath = "%s/%s.py" % (self.virtualenv, self.uuid)
+        f = open(filepath, "wb") ; f.write(source); f.close()
+
+        f = open("%s/%s.py" % (self.virtualenv, self.uuid), "rb")
+        mod = imp.load_source(self.uuid, filepath, f)
+        f.close()
+
         kwargs = self.serialized['kwargs']
         args = self.serialized['args']
-        cls = pickle.loads(self.serialized['cls'])
-        funkt = getattr(cls, self.serialized['func'])
+
+        cls = getattr(mod, self.serialized['cls'])
+        instance = cls()
+        funkt = getattr(instance, self.serialized['func'])
 
         kwargs['logger'] = self.logger
         kwargs['__understudy__'] = True
