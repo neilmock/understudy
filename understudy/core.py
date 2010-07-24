@@ -24,7 +24,7 @@ class UnderstudyHandler(logging.Handler):
 
     def emit(self, record):
         self.redis.publish(self.uuid, self.format(record))
-        self.redis.lpush("log:%s" % self.uuid, self.format(record))
+        self.redis.lpush("understudy:log:%s" % self.uuid, self.format(record))
 
 class Result(object):
     def __init__(self, uuid, redis):
@@ -36,20 +36,20 @@ class Result(object):
                            password=redis.connection.password)
 
     def check_log(self):
-        log = self.redis.lpop("log:%s" % self.uuid)
+        log = self.redis.lpop("understudy:log:%s" % self.uuid)
         while log:
             self.log += log
 
-            log = self.redis.lpop("log:%s" % self.uuid)
+            log = self.redis.lpop("understudy:log:%s" % self.uuid)
 
         return self.log
 
     def check(self):
         self.check_log()
 
-        result = self.redis.get("result:%s" % self.uuid)
+        result = self.redis.get("understudy:result:%s" % self.uuid)
         if result:
-            self.redis.delete("result:%s" % self.uuid)
+            self.redis.delete("understudy:result:%s" % self.uuid)
 
             return result
 
@@ -166,7 +166,7 @@ class Understudy(object):
         handler = cls(uuid, action, logger=logger)
         retval = handler.perform()
 
-        self.redis.set("result:%s" % uuid, retval)
+        self.redis.set("understudy:result:%s" % uuid, retval)
         self.redis.publish(uuid, "COMPLETE")
 
     def start(self):
@@ -208,9 +208,9 @@ class Lead(object):
                 else:
                     print action
 
-        retval = self.redis.get("result:%s" % uuid)
-        self.redis.delete("result:%s" % uuid)
-        self.redis.delete("log:%s" % uuid)
+        retval = self.redis.get("understudy:result:%s" % uuid)
+        self.redis.delete("understudy:result:%s" % uuid)
+        self.redis.delete("understudy:log:%s" % uuid)
 
         return retval
 
