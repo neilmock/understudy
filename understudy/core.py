@@ -50,12 +50,6 @@ class Understudy(object):
 
         self.subscriber.subscribe(self.channel)
 
-    def _redis(self):
-        return Redis(host=self.redis.host,
-                     port=self.redis.port,
-                     db=self.redis.db,
-                     password=self.redis.connection.password)
-
     def _mkvirtualenv(self, packages):
         directory_name = tempfile.mkdtemp()
         cmd = "virtualenv %s --no-site-packages" % directory_name
