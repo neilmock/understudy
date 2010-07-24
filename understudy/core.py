@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import simplejson
 import pickle
@@ -15,15 +16,37 @@ def _exec(cmd):
                             stderr=subprocess.PIPE,
                             close_fds=True).communicate()[0]
 
+class UnderstudyHandler(logging.Handler):
+  def __init__(self, uuid, redis):
+    logging.Handler.__init__(self)
+    self.uuid = uuid
+    self.redis = redis
+
+  def emit(self, record):
+      self.redis.publish(self.uuid, self.format(record))
+      self.redis.lpush("log:%s" % self.uuid, self.format(record))
+
 class Result(object):
     def __init__(self, uuid, redis):
         self.uuid = uuid
+        self.log = ""
         self.redis = Redis(host=redis.host,
                            port=redis.port,
                            db=redis.db,
                            password=redis.connection.password)
 
+    def check_log(self):
+        log = self.redis.lpop("log:%s" % self.uuid)
+        while log:
+            self.log += log
+
+            log = self.redis.lpop("log:%s" % self.uuid)
+
+        return self.log
+
     def check(self):
+        self.check_log()
+
         result = self.redis.get("result:%s" % self.uuid)
         if result:
             self.redis.delete("result:%s" % self.uuid)
@@ -34,18 +57,20 @@ class Result(object):
 
 class ShellHandler(object):
     "Handles shell tasks."
-    def __init__(self, uuid, shell_command):
+    def __init__(self, uuid, shell_command, logger=None):
         self.uuid = uuid
         self.shell_command = shell_command
+        self.logger = logger
 
     def perform(self):
         return _exec(self.shell_command)
 
 class FunctionHandler(object):
     "Handles understudy decorated functions."
-    def __init__(self, uuid, serialized):
+    def __init__(self, uuid, serialized, logger=None):
         self.uuid = uuid
         self.serialized = serialized
+        self.logger = logger
         self.virtualenv = self.mkvirtualenv()
 
     def mkvirtualenv(self):
@@ -77,7 +102,9 @@ class FunctionHandler(object):
         cls = pickle.loads(self.serialized['cls'])
         funkt = getattr(cls, self.serialized['func'])
 
+        kwargs['logger'] = self.logger
         kwargs['__understudy__'] = True
+
         retval = funkt(*args, **kwargs)
 
         self.rmvirtualenv()
@@ -120,8 +147,12 @@ class Understudy(object):
         handler = message['handler']
         action = message['action']
 
+        logger = logging.getLogger(uuid)
+        log_handler = UnderstudyHandler(uuid, self.redis)
+        logger.addHandler(log_handler)
+
         cls = Understudy.HANDLERS[handler]
-        handler = cls(uuid, action)
+        handler = cls(uuid, action, logger=logger)
         retval = handler.perform()
 
         self.redis.set("result:%s" % uuid, retval)
@@ -159,10 +190,16 @@ class Lead(object):
 
         for message in self.redis.listen():
             if message['type'] == 'message':
-                self.redis.unsubscribe(uuid)
+                action = message['data']
+
+                if action == "COMPLETE":
+                    self.redis.unsubscribe(uuid)
+                else:
+                    print action
 
         retval = self.redis.get("result:%s" % uuid)
         self.redis.delete("result:%s" % uuid)
+        self.redis.delete("log:%s" % uuid)
 
         return retval
 

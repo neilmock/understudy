@@ -7,6 +7,11 @@ def understudy(*uargs, **ukwargs):
         def dispatch(cls, *args, **kwargs):
             if '__understudy__' in kwargs:
                 del(kwargs['__understudy__'])
+
+                logger = kwargs['logger']
+                setattr(cls, 'logger', logger)
+                del(kwargs['logger'])
+
                 return func(cls, *args, **kwargs)
 
             channel = uargs[0]

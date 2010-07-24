@@ -1,9 +1,12 @@
+import sys
 import unittest
+import StringIO
 from multiprocessing import Process
 from understudy import Understudy, Result
 from understudy.exceptions import NoUnderstudiesError
 from understudy.decorators import understudy
 
+from helper import wait_for
 from helper import TEST_DB
 
 
@@ -14,6 +17,18 @@ def start_understudy(channel, queue=False):
 class Job(object):
     @understudy("test", db=TEST_DB)
     def add(self, num1, num2):
+        return num1 + num2
+
+class LoggedJob(object):
+    @understudy("test", db=TEST_DB)
+    def add(self, num1, num2):
+        self.logger.info("Adding %s to %s" % (num1, num2))
+        return num1 + num2
+
+class BlockingLoggedJob(object):
+    @understudy("test", block=True, db=TEST_DB)
+    def add(self, num1, num2):
+        self.logger.info("Adding %s to %s" % (num1, num2))
         return num1 + num2
 
 class BlockingJob(object):
@@ -43,6 +58,36 @@ class TestDecorator(unittest.TestCase):
 
     def tearDown(self):
         self.p.terminate()
+
+    def test_logging(self):
+        while True:
+            try:
+                job = LoggedJob()
+                result = job.add(1,1)
+                break
+            except NoUnderstudiesError:
+                pass
+
+        actual_result = wait_for(result)
+
+        self.assertEquals(result.log,
+                          "Adding 1 to 1")
+
+    def test_blocking_logging(self):
+        capture = StringIO.StringIO()
+        sys.stdout = capture
+
+        while True:
+            try:
+                job = BlockingLoggedJob()
+                result = job.add(1,1)
+                break
+            except NoUnderstudiesError:
+                pass
+
+
+        self.assertEquals(capture.getvalue(),
+                          "Adding 1 to 1\n")
 
     def test_blocking(self):
         while True:
@@ -83,9 +128,7 @@ class TestDecorator(unittest.TestCase):
 
         self.assertTrue(isinstance(result, Result))
 
-        actual_result = result.check()
-        while not actual_result:
-            actual_result = result.check()
+        actual_result = wait_for(result)
 
         self.assertEquals(actual_result, "2")
 
@@ -100,8 +143,6 @@ class TestDecorator(unittest.TestCase):
 
         self.assertTrue(isinstance(result, Result))
 
-        actual_result = result.check()
-        while not actual_result:
-            actual_result = result.check()
+        actual_result = wait_for(result)
 
         self.assertEquals(actual_result, "True")
