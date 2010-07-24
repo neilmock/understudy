@@ -44,7 +44,6 @@ class TestDecorator(unittest.TestCase):
             except NoUnderstudiesError:
                 pass
 
-
         self.assertEquals(capture.getvalue(),
                           "Adding 1 to 1\n")
 

@@ -158,6 +158,7 @@ class Understudy(object):
         action = message['action']
 
         logger = logging.getLogger(uuid)
+        logger.setLevel(logging.INFO)
         log_handler = UnderstudyHandler(uuid, self.redis)
         logger.addHandler(log_handler)
 
