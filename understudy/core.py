@@ -43,12 +43,12 @@ class Understudy(object):
                            db=db,
                            password=password)
 
-        self.redis_subscriber = Redis(host=host,
-                                      port=port,
-                                      db=db,
-                                      password=password)
+        self.subscriber = Redis(host=host,
+                                port=port,
+                                db=db,
+                                password=password)
 
-        self.redis_subscriber.subscribe(self.channel)
+        self.subscriber.subscribe(self.channel)
 
     def _redis(self):
         return Redis(host=self.redis.host,
@@ -122,7 +122,7 @@ class Understudy(object):
         if self.queue:
             self.process_queue()
 
-        for message in self.redis_subscriber.listen():
+        for message in self.subscriber.listen():
             if message['type'] == 'subscribe':
                 continue
 
@@ -135,7 +135,7 @@ class Understudy(object):
             self.process_message(message)
 
     def stop(self):
-        self.redis_subscriber.unsubscribe(self.channel)
+        self.subscriber.unsubscribe(self.channel)
 
 class Lead(object):
     "Redis publisher."
