@@ -5,85 +5,103 @@ Understudy is a framework for distributed computing in Python.  It allows
 you to write Python code and transparently execute it on any number of
 listening nodes.
 
-It currently requires the 2.0 version of Redis with pub/sub support.
+It requires the 2.0 version of Redis with pub/sub support.
 
-Overview
---------
+Whirlwind Tour
+--------------
 
-Understudy provides a decorator for enabling Python classes to
-distribute work to an understudy:
+Fire up a redis server, either locally or on a remote node. Install
+Understudy (PyPi coming soon).
 
-    class Job(object):
-        @understudy("calculator")
-        def add(self, num1, num2):
-            return num1 + num2
+Run this script:
 
-The "understudy" decorator takes an understudy name as the first argument.
-This essentially sends the method to a named understudy process that is
-listening for requests.
-
-Here's an example of starting an understudy:
+    from understudy import Understudy
 
     understudy = Understudy("calculator")
     understudy.start()
 
-These will typically run daemonized on compute nodes.
+The Understudy constructor takes all the keyword params of the Redis
+client, in case you need specific host/port/db.
 
-Example
--------
+Elsewhere, define this class (for instance, in arithmetic.py):
 
-Continuing the example above, here's how to add two numbers:
+    from understudy.decorators import understudy
 
-    >>> job = Job()
-    >>> result = job.add(1,1)
+    class Adder(object):
+        @understudy("calculator")
+        def add(self, num1, num2):
+            return num1 + num2
+
+The "understudy" decorator also takes standard Redis client keywords arguments.
+
+In a repl:
+
+    >>> from arithmetic import Adder
+    >>> adder = Adder()
+    >>> result = adder.add(1,1)
     >>> result.check()
     None
+    >>> # wait for task to finish
+    ...
     >>> result.check()
-    2
+    '2'
 
-The add() method immediately returns a Result class, from which the result
-store can be polled and ultimately returned with a value.  "None" is returned
-if the understudy has not yet completed the task.
+Voila, addition performed on the remote node with the result returned locally.
 
 Virtual Environments
 --------------------
 
-Understudy requires that all imports used in the module are available on
-the Python environment of the understudy node(s).
-
-To facilitate this, Understudy has support for automatically bootstrapping
-a virtual environment and executing the called method within the context of
-that environment.
-
-Here's an example:
+Understudy has built-in support for virtual environments (via virtualenv).
+Packages can be specified in the decorator to be installed in a virtual
+environment prior to execution.
 
     from understudy.decorators import understudy
-    from boto.s3 import Connection
 
-    class Downloader(object):
-        @understudy("s3_understudy", packages=['boto>=1.9b'])
-        def download(key):
-            connection = Connection()
-            key = connection.get_bucket("mybucket").get_key(key)
-            key.get_contents_to_filename("/path/to/myfile")
+    class TimeZoneTool(object):
+        @understudy(packages=["pytz"], block=True)
+        def eastern(self):
+            from pytz import timezone
+            eastern = timezone('US/Eastern')
 
-This bootstraps a virtual environment on the understudy node by installing
-boto via PIP before executing the download() method.  Packages are defined
-in PIP requirements.txt fashion.
+            return eastern.zone
 
-Redis
------
+At the REPL:
 
-Understudy is built on Redis, and both the decorator and the Understudy
-constructor take standard redis-py connection parameters as arguments:
+    >>> tzt = TimeZoneTool()
+    >>> tzt.eastern()
+    US/Eastern
 
-    class Job(object):
-        @understudy("calculator", host="127.0.0.1", port=6332, db=12)
+Notice the "block" keyword argument?  In the previous example, a
+Result object was returned immediately upon method invocation, and
+the result could be polled.  If "block" is set to True, the method
+will block until remote execution has finished and the result is available.
+
+Logging
+-------
+
+Understudy has built-in support for logging during the remote execution
+of methods.
+
+    class Adder(object):
+        @understudy("calculator")
         def add(self, num1, num2):
+            self.logger.info("Adding %s to %s" % (num1, num1))
             return num1 + num2
+
+If blocking is enabled, logging will take place on stdout;
+otherwise, the Result object will be populated with the contents of the
+log (populated along with the result during the check() method).
+
+    >>> result.check()
+    '2'
+    >>> result.log
+    'Adding 1 to 1'
 
 Disclaimer
 ----------
 
-This is a work in progress and should be considered alpha as in
-"please dont use" until further notice.
+This project is "alpha" and is subject to drastic change, including breaking
+of API compabilitiy.
+
+Also, this really does execute Python code remotely on any listening node.
+Please use with caution and secure your servers.
