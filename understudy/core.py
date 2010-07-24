@@ -32,8 +32,64 @@ class Result(object):
 
         return None
 
+class ShellHandler(object):
+    "Handles shell tasks."
+    def __init__(self, uuid, shell_command):
+        self.uuid = uuid
+        self.shell_command = shell_command
+
+    def perform(self):
+        return _exec(self.shell_command)
+
+class FunctionHandler(object):
+    "Handles understudy decorated functions."
+    def __init__(self, uuid, serialized):
+        self.uuid = uuid
+        self.serialized = serialized
+        self.virtualenv = self.mkvirtualenv()
+
+    def mkvirtualenv(self):
+        directory_name = tempfile.mkdtemp()
+        cmd = "virtualenv %s --no-site-packages" % directory_name
+
+        _exec(cmd)
+
+        packages = self.serialized.get('packages', [])
+        if packages:
+            packages = ["\"%s\"" % package for package in packages]
+            cmd = "source %s/bin/activate && pip install %s" % \
+                (directory_name, " ".join(packages))
+
+            _exec(cmd)
+
+        activation_file = "%s/bin/activate_this.py" % directory_name
+        execfile(activation_file, dict(__file__=activation_file))
+
+        return directory_name
+
+    def rmvirtualenv(self):
+        shutil.rmtree(self.virtualenv)
+        self.virtualenv = None
+
+    def perform(self):
+        kwargs = self.serialized['kwargs']
+        args = self.serialized['args']
+        cls = pickle.loads(self.serialized['cls'])
+        funkt = getattr(cls, self.serialized['func'])
+
+        kwargs['__understudy__'] = True
+        retval = funkt(*args, **kwargs)
+
+        self.rmvirtualenv()
+
+        return retval
+
 class Understudy(object):
     "Redis subscriber/queue processor."
+
+    HANDLERS = {'shell':ShellHandler,
+                'function':FunctionHandler,}
+
     def __init__(self, channel, queue=False,
                  host='localhost', port=6379, db=0, password=None):
         self.channel = channel
@@ -50,47 +106,6 @@ class Understudy(object):
 
         self.subscriber.subscribe(self.channel)
 
-    def _mkvirtualenv(self, packages):
-        directory_name = tempfile.mkdtemp()
-        cmd = "virtualenv %s --no-site-packages" % directory_name
-
-        _exec(cmd)
-
-        if packages:
-            packages = ["\"%s\"" % package for package in packages]
-            cmd = "source %s/bin/activate && pip install %s" % \
-                (directory_name, " ".join(packages))
-
-            _exec(cmd)
-
-        activation_file = "%s/bin/activate_this.py" % directory_name
-        execfile(activation_file, dict(__file__=activation_file))
-
-        return directory_name
-
-    def _rmvirtualenv(self, directory):
-        shutil.rmtree(directory)
-
-    def shell(self, command):
-        return _exec(command)
-
-    def perform(self, serialized):
-        packages = serialized['packages']
-
-        virtualenv = self._mkvirtualenv(packages)
-
-        kwargs = serialized['kwargs']
-        args = serialized['args']
-        cls = pickle.loads(serialized['cls'])
-        funkt = getattr(cls, serialized['func'])
-
-        kwargs['__understudy__'] = True
-        retval = funkt(*args, **kwargs)
-
-        self._rmvirtualenv(virtualenv)
-
-        return retval
-
     def process_queue(self):
         msg = self.redis.lpop(self.channel)
 
@@ -102,15 +117,15 @@ class Understudy(object):
 
     def process_message(self, message):
         uuid = message['uuid']
+        handler = message['handler']
+        action = message['action']
 
-        directive = message['directive']
+        cls = Understudy.HANDLERS[handler]
+        handler = cls(uuid, action)
+        retval = handler.perform()
 
-        for action, args in directive.items():
-            func = getattr(self, action)
-            retval = func(args)
-
-            self.redis.set("result:%s" % uuid, retval)
-            self.redis.publish(uuid, "COMPLETE")
+        self.redis.set("result:%s" % uuid, retval)
+        self.redis.publish(uuid, "COMPLETE")
 
     def start(self):
         if self.queue:
@@ -170,13 +185,13 @@ class Lead(object):
 
     def shell(self, command, block=False):
         uuid = str(uuid4())
-        directive = {'uuid':uuid, 'directive':{'shell':command}}
+        directive = {'uuid':uuid, 'handler':'shell', 'action':command}
 
         return self._handle(directive, block)
 
     def perform(self, action, block=False):
         uuid = str(uuid4())
 
-        directive = {'uuid':uuid, 'directive':{'perform':action}}
+        directive = {'uuid':uuid, 'handler':'function', 'action':action}
 
         return self._handle(directive, block)
