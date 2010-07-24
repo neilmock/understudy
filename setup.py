@@ -7,7 +7,7 @@
 @brief setuptools config for understudy
 """
 
-version = '0.0.1'
+version = '0.1.0'
 
 sdict = {
     'name' : 'understudy',
