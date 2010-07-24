@@ -24,9 +24,9 @@ class Result(object):
                            password=redis.connection.password)
 
     def check(self):
-        result = self.redis.get("result-%s" % self.uuid)
+        result = self.redis.get("result:%s" % self.uuid)
         if result:
-            self.redis.delete("result-%s" % self.uuid)
+            self.redis.delete("result:%s" % self.uuid)
 
             return result
 
@@ -109,7 +109,7 @@ class Understudy(object):
             func = getattr(self, action)
             retval = func(args)
 
-            self.redis.set("result-%s" % uuid, retval)
+            self.redis.set("result:%s" % uuid, retval)
             self.redis.publish(uuid, "COMPLETE")
 
     def start(self):
@@ -146,8 +146,8 @@ class Lead(object):
             if message['type'] == 'message':
                 self.redis.unsubscribe(uuid)
 
-        retval = self.redis.get("result-%s" % uuid)
-        self.redis.delete("result-%s" % uuid)
+        retval = self.redis.get("result:%s" % uuid)
+        self.redis.delete("result:%s" % uuid)
 
         return retval
 
