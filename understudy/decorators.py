@@ -11,6 +11,7 @@ def understudy(*uargs, **ukwargs):
 
             channel = uargs[0]
             block = ukwargs.get('block', False)
+            queue = ukwargs.get('queue', False)
             host = ukwargs.get('host', 'localhost')
             port = ukwargs.get('port', 6379)
             db = ukwargs.get('db', 0)
@@ -24,7 +25,8 @@ def understudy(*uargs, **ukwargs):
                       'kwargs':kwargs,
                       'packages':packages}
 
-            lead = Lead(channel, host=host, port=port, db=db, password=password)
+            lead = Lead(channel, queue=queue,
+                        host=host, port=port, db=db, password=password)
             result = lead.perform(action, block=block)
 
             return result

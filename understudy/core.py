@@ -33,13 +33,28 @@ class Result(object):
         return None
 
 class Understudy(object):
-    "Redis subscriber."
-    def __init__(self, channel,
+    "Redis subscriber/queue processor."
+    def __init__(self, channel, queue=False,
                  host='localhost', port=6379, db=0, password=None):
         self.channel = channel
-        self.redis = Redis(host=host, port=port, db=db, password=password)
+        self.queue = queue
+        self.redis = Redis(host=host,
+                           port=port,
+                           db=db,
+                           password=password)
 
-        self.redis.subscribe(self.channel)
+        self.redis_subscriber = Redis(host=host,
+                                      port=port,
+                                      db=db,
+                                      password=password)
+
+        self.redis_subscriber.subscribe(self.channel)
+
+    def _redis(self):
+        return Redis(host=self.redis.host,
+                     port=self.redis.port,
+                     db=self.redis.db,
+                     password=self.redis.connection.password)
 
     def _mkvirtualenv(self, packages):
         directory_name = tempfile.mkdtemp()
@@ -65,7 +80,6 @@ class Understudy(object):
     def shell(self, command):
         return _exec(command)
 
-
     def perform(self, serialized):
         packages = serialized['packages']
 
@@ -83,37 +97,52 @@ class Understudy(object):
 
         return retval
 
+    def process_queue(self):
+        msg = self.redis.lpop(self.channel)
+
+        while msg:
+            message = simplejson.loads(msg)
+            self.process_message(message)
+
+            msg = self.redis.lpop(self.channel)
+
+    def process_message(self, message):
+        uuid = message['uuid']
+
+        directive = message['directive']
+
+        for action, args in directive.items():
+            func = getattr(self, action)
+            retval = func(args)
+
+            self.redis.set("result-%s" % uuid, retval)
+            self.redis.publish(uuid, "COMPLETE")
+
     def start(self):
-        for message in self.redis.listen():
+        if self.queue:
+            self.process_queue()
+
+        for message in self.redis_subscriber.listen():
             if message['type'] == 'subscribe':
                 continue
 
+            if self.queue:
+                self.process_queue()
+                continue
+
             message = simplejson.loads(message['data'])
-            uuid = message['uuid']
 
-            _redis = Redis(host=self.redis.host,
-                           port=self.redis.port,
-                           db=self.redis.db,
-                           password=self.redis.connection.password)
-
-            directive = message['directive']
-
-            for action, args in directive.items():
-                func = getattr(self, action)
-                retval = func(args)
-
-                _redis.set("result-%s" % uuid, retval)
-                _redis.publish(uuid, "COMPLETE")
-
+            self.process_message(message)
 
     def stop(self):
-        self.redis.unsubscribe(self.channel)
+        self.redis_subscriber.unsubscribe(self.channel)
 
 class Lead(object):
     "Redis publisher."
-    def __init__(self, channel,
+    def __init__(self, channel, queue=False,
                  host='localhost', port=6379, db=0, password=None):
         self.channel = channel
+        self.queue = queue
         self.redis = Redis(host=host, port=port, db=db, password=password)
 
     def _block(self, uuid):
@@ -129,11 +158,16 @@ class Lead(object):
         return retval
 
     def _handle(self, directive, block):
-        understudies = self.redis.publish(self.channel,
-                                          simplejson.dumps(directive))
+        serialized = simplejson.dumps(directive)
 
-        if not understudies:
-            raise NoUnderstudiesError("No understudies found for this channel!")
+        if self.queue:
+            self.redis.rpush(self.channel, serialized)
+            self.redis.publish(self.channel, "GO!")
+        else:
+            understudies = self.redis.publish(self.channel, serialized)
+
+            if not understudies:
+                raise NoUnderstudiesError
 
         if block:
             return self._block(directive['uuid'])

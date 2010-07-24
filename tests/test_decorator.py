@@ -7,8 +7,8 @@ from understudy.decorators import understudy
 from helper import TEST_DB
 
 
-def start_understudy(channel):
-    understudy = Understudy(channel, db=TEST_DB)
+def start_understudy(channel, queue=False):
+    understudy = Understudy(channel, queue=queue, db=TEST_DB)
     understudy.start()
 
 class Job(object):
@@ -18,6 +18,11 @@ class Job(object):
 
 class BlockingJob(object):
     @understudy("test", block=True, db=TEST_DB)
+    def add(self, num1, num2):
+        return num1 + num2
+
+class QueuedJob(object):
+    @understudy("test_queue", queue=True, db=TEST_DB)
     def add(self, num1, num2):
         return num1 + num2
 
@@ -49,6 +54,23 @@ class TestDecorator(unittest.TestCase):
                 pass
 
         self.assertEquals(int(result), 2)
+
+    def test_queued(self):
+        job = QueuedJob()
+        result = job.add(1,1)
+
+        p = Process(target=start_understudy,
+                    args=("test_queue",),
+                    kwargs={'queue': True})
+        p.start()
+
+        retval = result.check()
+        while not retval:
+            retval = result.check()
+
+        p.terminate()
+
+        self.assertEquals(int(retval), 2)
 
     def test_without_requirements(self):
         while True:
